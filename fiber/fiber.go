@@ -9,16 +9,16 @@ const (
 	Running
 )
 
-type fiber struct {
+type fiber[T any] struct {
 	status uint32
-	fn     func(FiberSuspend)
-	in     chan interface{}
-	out    chan interface{}
+	fn     func(SuspendFunc[T])
+	in     chan T
+	out    chan T
 }
 
-type Fiber interface {
-	Start() interface{}
-	Resume(v interface{}) interface{}
+type Fiber[T any] interface {
+	Start() T
+	Resume(v T) T
 
 	IsStarted() bool
 	IsRunning() bool
@@ -26,24 +26,22 @@ type Fiber interface {
 	IsTerminated() bool
 }
 
-type FiberSuspend interface {
-	Suspend(v interface{}) interface{}
-}
+type SuspendFunc[T any] func(T) T
 
-func New(fn func(FiberSuspend)) Fiber {
-	return &fiber{
+func New[T any](fn func(SuspendFunc[T])) Fiber[T] {
+	return &fiber[T]{
 		fn:  fn,
-		in:  make(chan interface{}),
-		out: make(chan interface{}),
+		in:  make(chan T),
+		out: make(chan T),
 	}
 }
-
-func (f *fiber) Start() (v interface{}) {
+func (f *fiber[T]) Start() (v T) {
 	if atomic.SwapUint32(&f.status, Started|Running) != 0 {
-		return nil
+		var zero T
+		return zero
 	}
 	go func() {
-		f.fn(f)
+		f.fn(f.suspend)
 		close(f.in)
 		close(f.out)
 		f.status = 0 // Terminated
@@ -51,32 +49,33 @@ func (f *fiber) Start() (v interface{}) {
 	return <-f.out
 }
 
-func (f *fiber) Resume(v interface{}) interface{} {
+func (f *fiber[T]) Resume(v T) T {
 	if atomic.SwapUint32(&f.status, f.status|Running) != Started {
-		return nil
+		var zero T
+		return zero
 	}
 	f.in <- v
 	return <-f.out
 }
 
-func (f *fiber) Suspend(v interface{}) interface{} {
+func (f *fiber[T]) suspend(v T) T {
 	f.status &^= Running
 	f.out <- v
 	return <-f.in
 }
 
-func (f *fiber) IsStarted() bool {
+func (f *fiber[T]) IsStarted() bool {
 	return f.status&Started > 0
 }
 
-func (f *fiber) IsRunning() bool {
+func (f *fiber[T]) IsRunning() bool {
 	return f.status&Running > 0
 }
 
-func (f *fiber) IsSuspended() bool {
+func (f *fiber[T]) IsSuspended() bool {
 	return !f.IsRunning()
 }
 
-func (f *fiber) IsTerminated() bool {
+func (f *fiber[T]) IsTerminated() bool {
 	return !f.IsStarted()
 }
