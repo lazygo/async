@@ -15,18 +15,18 @@ var (
 	ErrFiber = errors.New("fiber error")
 )
 
-type fiber[T any] struct {
+type fiber[In any, Out any] struct {
 	status uint32
-	fn     func(SuspendFunc[T]) T
-	ret    T
-	in     chan T
-	out    chan T
+	fn     func(In, SuspendFunc[In, Out]) Out
+	ret    Out
+	in     chan In
+	out    chan Out
 }
 
-type Fiber[T any] interface {
-	Start() (T, error)
-	Resume(v T) (T, error)
-	GetReturn() (T, error)
+type Fiber[In any, Out any] interface {
+	Start(In) (Out, error)
+	Resume(In) (Out, error)
+	GetReturn() (Out, error)
 
 	IsStarted() bool
 	IsRunning() bool
@@ -34,22 +34,23 @@ type Fiber[T any] interface {
 	IsTerminated() bool
 }
 
-type SuspendFunc[T any] func(T) T
+type SuspendFunc[In any, Out any] func(Out) In
 
-func New[T any](fn func(SuspendFunc[T]) T) Fiber[T] {
-	return &fiber[T]{
+func New[In any, Out any](fn func(In, SuspendFunc[In, Out]) Out) Fiber[In, Out] {
+	return &fiber[In, Out]{
 		fn:  fn,
-		in:  make(chan T),
-		out: make(chan T),
+		in:  make(chan In),
+		out: make(chan Out),
 	}
 }
-func (f *fiber[T]) Start() (T, error) {
+
+func (f *fiber[In, Out]) Start(in In) (Out, error) {
 	if atomic.SwapUint32(&f.status, Started|Running) != 0 {
-		var zero T
+		var zero Out
 		return zero, fmt.Errorf("%w: fiber already started", ErrFiber)
 	}
 	go func() {
-		f.ret = f.fn(f.suspend)
+		f.ret = f.fn(in, f.suspend)
 		close(f.in)
 		close(f.out)
 		f.status = 0 // Terminated
@@ -57,41 +58,41 @@ func (f *fiber[T]) Start() (T, error) {
 	return <-f.out, nil
 }
 
-func (f *fiber[T]) Resume(v T) (T, error) {
+func (f *fiber[In, Out]) Resume(in In) (Out, error) {
 	if atomic.SwapUint32(&f.status, f.status|Running) != Started {
-		var zero T
+		var zero Out
 		return zero, fmt.Errorf("%w: fiber not suspend", ErrFiber)
 	}
-	f.in <- v
+	f.in <- in
 	return <-f.out, nil
 }
 
-func (f *fiber[T]) suspend(v T) T {
+func (f *fiber[In, Out]) suspend(v Out) In {
 	f.status &^= Running
 	f.out <- v
 	return <-f.in
 }
 
-func (f *fiber[T]) GetReturn() (T, error) {
+func (f *fiber[In, Out]) GetReturn() (Out, error) {
 	if f.IsStarted() {
-		var zero T
+		var zero Out
 		return zero, fmt.Errorf("%w: fiber not return", ErrFiber)
 	}
 	return f.ret, nil
 }
 
-func (f *fiber[T]) IsStarted() bool {
+func (f *fiber[In, Out]) IsStarted() bool {
 	return f.status&Started > 0
 }
 
-func (f *fiber[T]) IsRunning() bool {
+func (f *fiber[In, Out]) IsRunning() bool {
 	return f.status&Running > 0
 }
 
-func (f *fiber[T]) IsSuspended() bool {
+func (f *fiber[In, Out]) IsSuspended() bool {
 	return !f.IsRunning()
 }
 
-func (f *fiber[T]) IsTerminated() bool {
+func (f *fiber[In, Out]) IsTerminated() bool {
 	return !f.IsStarted()
 }

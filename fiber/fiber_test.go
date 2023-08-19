@@ -6,8 +6,11 @@ import (
 )
 
 func TestFiber(t *testing.T) {
-	fi := New(func(suspend SuspendFunc[string]) string {
-		fmt.Println("started")
+	fi := New(func(in string, suspend SuspendFunc[string, string]) string {
+		if in != "fiber start" {
+			fmt.Println(in)
+			t.Error("Start error")
+		}
 		v := suspend("first suspend")
 		if v != "second resume" {
 			fmt.Println(v)
@@ -16,7 +19,7 @@ func TestFiber(t *testing.T) {
 		return "return val"
 	})
 
-	first, err := fi.Start()
+	first, err := fi.Start("fiber start")
 	if err != nil {
 		t.Error(err)
 	}
