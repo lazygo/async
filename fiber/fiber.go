@@ -1,6 +1,8 @@
 package fiber
 
 import (
+	"errors"
+	"fmt"
 	"sync/atomic"
 )
 
@@ -9,16 +11,22 @@ const (
 	Running
 )
 
+var (
+	ErrFiber = errors.New("fiber error")
+)
+
 type fiber[T any] struct {
 	status uint32
-	fn     func(SuspendFunc[T])
+	fn     func(SuspendFunc[T]) T
+	ret    T
 	in     chan T
 	out    chan T
 }
 
 type Fiber[T any] interface {
-	Start() T
-	Resume(v T) T
+	Start() (T, error)
+	Resume(v T) (T, error)
+	GetReturn() (T, error)
 
 	IsStarted() bool
 	IsRunning() bool
@@ -28,40 +36,48 @@ type Fiber[T any] interface {
 
 type SuspendFunc[T any] func(T) T
 
-func New[T any](fn func(SuspendFunc[T])) Fiber[T] {
+func New[T any](fn func(SuspendFunc[T]) T) Fiber[T] {
 	return &fiber[T]{
 		fn:  fn,
 		in:  make(chan T),
 		out: make(chan T),
 	}
 }
-func (f *fiber[T]) Start() (v T) {
+func (f *fiber[T]) Start() (T, error) {
 	if atomic.SwapUint32(&f.status, Started|Running) != 0 {
 		var zero T
-		return zero
+		return zero, fmt.Errorf("%w: fiber already started", ErrFiber)
 	}
 	go func() {
-		f.fn(f.suspend)
+		f.ret = f.fn(f.suspend)
 		close(f.in)
 		close(f.out)
 		f.status = 0 // Terminated
 	}()
-	return <-f.out
+	return <-f.out, nil
 }
 
-func (f *fiber[T]) Resume(v T) T {
+func (f *fiber[T]) Resume(v T) (T, error) {
 	if atomic.SwapUint32(&f.status, f.status|Running) != Started {
 		var zero T
-		return zero
+		return zero, fmt.Errorf("%w: fiber not suspend", ErrFiber)
 	}
 	f.in <- v
-	return <-f.out
+	return <-f.out, nil
 }
 
 func (f *fiber[T]) suspend(v T) T {
 	f.status &^= Running
 	f.out <- v
 	return <-f.in
+}
+
+func (f *fiber[T]) GetReturn() (T, error) {
+	if f.IsStarted() {
+		var zero T
+		return zero, fmt.Errorf("%w: fiber not return", ErrFiber)
+	}
+	return f.ret, nil
 }
 
 func (f *fiber[T]) IsStarted() bool {
