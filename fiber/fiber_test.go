@@ -43,18 +43,3 @@ func TestFiber(t *testing.T) {
 	}
 
 }
-
-func TestFiber1(t *testing.T) {
-
-	fib := New(func(suspend SuspendFunc[string]) string {
-		value := suspend("fiber")
-		fmt.Println("Value used to resume fiber:", value)
-		return "return val"
-	})
-
-	value, _ := fib.Start()
-	fmt.Println("Value from fiber suspending:", value)
-	fib.Resume("test")
-	ret, _ := fib.GetReturn()
-	fmt.Println("Value from fiber return:", ret)
-}

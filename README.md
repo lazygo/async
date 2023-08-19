@@ -15,7 +15,7 @@ go async library
 纤程一旦被暂停，可以使用 Fiber::resume() 传递任意值.
 
 ```golang
-	fib := New(func(suspend SuspendFunc[string]) string {
+	fib := fiber.New(func(suspend SuspendFunc[string]) string {
 		value := suspend("fiber")
 		fmt.Println("Value used to resume fiber:", value)
 		return "return val"
